@@ -22,7 +22,18 @@ Centuries of forgetting have curdled his grief into rage.
 
 There are two ways this ends.
 
-## Requirements
+## Play in the Browser
+
+```bash
+pip3 install flask flask-sock
+python3 server.py
+```
+
+Then open **http://localhost:5000** in any browser. Works on phones too — open the URL from any device on your network using your machine's local IP (shown on startup).
+
+Uses xterm.js + WebSockets + a real PTY under the hood. Every color, animation, and ASCII art panel renders exactly as intended.
+
+## Play in the Terminal
 
 Python 3.7+. No dependencies.
 
@@ -30,7 +41,7 @@ Python 3.7+. No dependencies.
 python3 dungeon_game.py
 ```
 
-A terminal with ANSI color support is recommended (most modern terminals qualify). For the best experience on a phone, SSH in using [Termius](https://termius.com/) or similar.
+ANSI color support required (all modern terminals qualify). For phone play via terminal, SSH in with [Termius](https://termius.com/) or similar.
 
 ## The Dungeon (12 Rooms)
 
