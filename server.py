@@ -80,24 +80,25 @@ HTML = r"""<!DOCTYPE html>
       flex-direction: column;
       gap: 20px;
       z-index: 100;
+      overflow: hidden;
     }
     #overlay.hidden { display: none; }
 
     #overlay .title {
       font-family: "Courier New", monospace;
       color: #997700;
-      font-size: clamp(11px, 2vw, 14px);
-      letter-spacing: 0.2em;
+      font-size: min(12px, 2vw);
+      letter-spacing: 0;
       text-align: center;
       white-space: pre;
-      line-height: 1.4;
+      line-height: 1.3;
     }
 
     #overlay .subtitle {
       font-family: "Courier New", monospace;
       color: #444;
-      font-size: 12px;
-      letter-spacing: 0.1em;
+      font-size: clamp(10px, 2.5vw, 12px);
+      letter-spacing: 0.05em;
     }
 
     #start-btn {
@@ -291,7 +292,7 @@ def game_ws(ws):
     try:
         while not stop.is_set() and proc.poll() is None:
             try:
-                data = ws.receive(timeout=0.1)
+                data = ws.receive(timeout=1)
                 if data is None:
                     break
                 # Control message: resize event from browser
@@ -301,7 +302,9 @@ def game_ws(ws):
                 else:
                     os.write(master_fd, data.encode())
             except Exception:
-                break
+                # Only break on a real disconnect; ignore receive timeouts
+                if not getattr(ws, "connected", True):
+                    break
     finally:
         stop.set()
         proc.terminate()
