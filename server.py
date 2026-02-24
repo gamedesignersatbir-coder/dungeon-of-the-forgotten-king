@@ -321,7 +321,8 @@ def game_ws(ws):
 
 if __name__ == "__main__":
     import sys
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+    # Cloud platforms inject $PORT; fall back to CLI arg or 5000
+    port = int(os.environ.get("PORT", sys.argv[1] if len(sys.argv) > 1 else 5000))
     print(f"\n  Dungeon of the Forgotten King — Web Server")
     print(f"  ─────────────────────────────────────────")
     print(f"  Local:   http://localhost:{port}")

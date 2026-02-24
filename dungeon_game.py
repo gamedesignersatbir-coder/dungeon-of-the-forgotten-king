@@ -36,7 +36,11 @@ def hr(char="─", width=62, color=C.DIM):
     return colored(char * width, color)
 
 def clear():
-    os.system("cls" if os.name == "nt" else "clear")
+    # ANSI escape — works in Docker/PTY without needing the `clear` binary
+    if os.name == "nt":
+        os.system("cls")
+    else:
+        print("\033[H\033[2J\033[3J", end="", flush=True)
 
 def pause(msg="  [Press Enter to continue]"):
     input(colored(f"\n{msg}", C.DIM))
