@@ -147,7 +147,8 @@ const term = new Terminal({
   cursorBlink: true,
   allowProposedApi: true,
   fontFamily: '"Cascadia Code", "Fira Code", "Courier New", monospace',
-  fontSize: window.innerWidth < 600 ? 12 : 14,
+  // Scale font so 80 columns always fit the screen (portrait-safe)
+  fontSize: Math.min(14, Math.max(8, Math.floor((window.innerWidth - 20) / 48))),
   lineHeight: 1.2,
   theme: {
     background:    '#000000',
@@ -252,9 +253,24 @@ def game_ws(ws):
     """
     Spawn one game process per WebSocket connection.
     Bridge: browser keystrokes → PTY stdin, PTY stdout → browser xterm.js.
+
+    Design: two daemon threads handle I/O; the main thread only monitors
+    termination.  ws_reader uses blocking ws.receive() (no timeout) so the
+    session never drops due to idle time between keystrokes.
     """
     master_fd, slave_fd = pty.openpty()
-    set_winsize(master_fd, 24, 80)  # sensible default before browser reports size
+
+    # Wait for the browser's first resize before starting the game so the
+    # subprocess sees the real terminal dimensions from the very first render.
+    cols, rows = 80, 24
+    try:
+        first = ws.receive(timeout=3)
+        if first and first.startswith("\x00RESIZE:"):
+            _, c, r = first.split(":")
+            cols, rows = int(c), int(r)
+    except Exception:
+        pass  # use defaults if no resize arrives in time
+    set_winsize(master_fd, rows, cols)
 
     proc = subprocess.Popen(
         ["python3", "-u", str(GAME_PATH)],
@@ -266,8 +282,8 @@ def game_ws(ws):
             **os.environ,
             "PYTHONUNBUFFERED": "1",
             "TERM": "xterm-256color",
-            "COLUMNS": "80",
-            "LINES": "24",
+            "COLUMNS": str(cols),
+            "LINES": str(rows),
         },
     )
     os.close(slave_fd)
@@ -286,25 +302,34 @@ def game_ws(ws):
                 break
         stop.set()
 
-    reader = threading.Thread(target=pty_reader, daemon=True)
-    reader.start()
-
-    try:
-        while not stop.is_set() and proc.poll() is None:
+    def ws_reader():
+        """Read browser keystrokes and forward to PTY.
+        Uses blocking receive() with no timeout — the session must never
+        disconnect just because the player hasn't typed for a while."""
+        while not stop.is_set():
             try:
-                data = ws.receive(timeout=1)
+                data = ws.receive()   # blocks until data or real close
                 if data is None:
                     break
-                # Control message: resize event from browser
                 if data.startswith("\x00RESIZE:"):
-                    _, cols, rows = data.split(":")
-                    set_winsize(master_fd, int(rows), int(cols))
+                    _, c, r = data.split(":")
+                    set_winsize(master_fd, int(r), int(c))
                 else:
                     os.write(master_fd, data.encode())
             except Exception:
-                # Only break on a real disconnect; ignore receive timeouts
-                if not getattr(ws, "connected", True):
-                    break
+                break   # genuine disconnect or PTY gone
+        stop.set()
+
+    pty_thread = threading.Thread(target=pty_reader, daemon=True)
+    ws_thread  = threading.Thread(target=ws_reader,  daemon=True)
+    pty_thread.start()
+    ws_thread.start()
+
+    try:
+        # Block until the game exits or either I/O thread signals done.
+        # stop.wait() releases as soon as stop is set, so cleanup is prompt.
+        while not stop.is_set() and proc.poll() is None:
+            stop.wait(timeout=0.5)
     finally:
         stop.set()
         proc.terminate()
@@ -316,6 +341,8 @@ def game_ws(ws):
             os.close(master_fd)
         except OSError:
             pass
+        # Returning from game_ws() causes flask-sock to close the WebSocket,
+        # which unblocks ws_reader's ws.receive() so that thread also exits.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
